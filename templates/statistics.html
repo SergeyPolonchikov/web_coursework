@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Статистика | StudyTask</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{{ url_for('dashboard') }}">
+                <i class="bi bi-journal-bookmark-fill me-2"></i>StudyTask
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}"><i class="bi bi-house me-1"></i>Главная</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('courses') }}"><i class="bi bi-book me-1"></i>Курсы</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="{{ url_for('statistics') }}"><i class="bi bi-graph-up me-1"></i>Статистика</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('profile') }}"><i class="bi bi-person me-1"></i>Профиль</a></li>
+                    <li class="nav-item"><a class="nav-link text-danger" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right me-1"></i>Выход</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="container py-4">
+        <h1 class="fw-bold mb-4"><i class="bi bi-graph-up text-primary me-2"></i>Статистика</h1>
+        
+        <div class="row g-4 mb-4">
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+                    <i class="bi bi-list-check fs-1 text-primary"></i>
+                    <h3 class="fw-bold mt-2 mb-0">0</h3>
+                    <small class="text-muted">Всего заданий</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+                    <i class="bi bi-check-circle fs-1 text-success"></i>
+                    <h3 class="fw-bold mt-2 mb-0">0</h3>
+                    <small class="text-muted">Выполнено</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+                    <i class="bi bi-hourglass-split fs-1 text-warning"></i>
+                    <h3 class="fw-bold mt-2 mb-0">0</h3>
+                    <small class="text-muted">На проверке</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+                    <i class="bi bi-star fs-1 text-info"></i>
+                    <h3 class="fw-bold mt-2 mb-0">0</h3>
+                    <small class="text-muted">Средний балл</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-5 text-center">
+                <i class="bi bi-bar-chart-steps fs-1 text-primary mb-3 d-block"></i>
+                <h4 class="fw-bold">Статистика в разработке</h4>
+                <p class="text-muted">Детальная статистика будет доступна в следующей версии</p>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-primary mt-2">Вернуться на главную</a>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

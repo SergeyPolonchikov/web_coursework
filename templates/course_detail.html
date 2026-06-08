@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ course.title }} | StudyTask</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{{ url_for('dashboard') }}">StudyTask</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">Главная</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('courses') }}">Курсы</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('statistics') }}">Статистика</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('profile') }}">Профиль</a></li>
+                    <li class="nav-item"><a class="nav-link text-danger" href="{{ url_for('logout') }}">Выход</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="container py-4">
+        <!-- Информация о курсе -->
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h1 class="fw-bold text-primary">{{ course.title }}</h1>
+                        <p class="text-muted mt-2">{{ course.description or 'Нет описания' }}</p>
+                        <p class="mb-0">
+                            <small class="text-muted">
+                                <i class="bi bi-person-badge me-1"></i>Преподаватель: {{ course.teacher.username }}
+                            </small>
+                        </p>
+                    </div>
+                    {% if current_user.role == 'teacher' and course.teacher_id == current_user.id %}
+                    <a href="{{ url_for('create_task_with_course', course_id=course.id) }}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle me-1"></i>Создать задание
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Список заданий курса -->
+        <h3 class="fw-bold mb-3">
+            <i class="bi bi-list-check text-primary me-2"></i>Задания курса
+        </h3>
+        
+        {% if tasks %}
+            <div class="row">
+                {% for task in tasks %}
+                <div class="col-md-6 mb-4">
+                    <div class="card border-0 shadow-sm rounded-4 h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <h5 class="card-title fw-bold text-primary">{{ task.title }}</h5>
+                                <span class="badge {% if task.deadline < now %}bg-danger{% else %}bg-success{% endif %}">
+                                    {% if task.deadline < now %}Просрочено{% else %}Активно{% endif %}
+                                </span>
+                            </div>
+                            <p class="card-text text-muted small">{{ task.description[:100] }}{% if task.description|length > 100 %}...{% endif %}</p>
+                            <p class="mb-2">
+                                <i class="bi bi-calendar-event text-warning me-1"></i>
+                                <small>Срок: {{ task.deadline.strftime('%d.%m.%Y %H:%M') }}</small>
+                            </p>
+                            <p class="mb-2">
+                                <i class="bi bi-star text-info me-1"></i>
+                                <small>Макс. балл: {{ task.max_score }}</small>
+                            </p>
+                            
+                            {% if current_user.role == 'teacher' and course.teacher_id == current_user.id %}
+                                <p class="mb-2">
+                                    <i class="bi bi-file-check text-success me-1"></i>
+                                    <small>Отправлено работ: {{ task.submissions|length }}</small>
+                                </p>
+                            {% endif %}
+                            
+                            <a href="{{ url_for('task_detail', task_id=task.id) }}" class="btn btn-outline-primary btn-sm mt-2">
+                                <i class="bi bi-eye me-1"></i>Подробнее
+                            </a>
+                            {% if current_user.role == 'teacher' and course.teacher_id == current_user.id %}
+                            <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-outline-secondary btn-sm mt-2">
+                                <i class="bi bi-pencil me-1"></i>Редактировать
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-info text-center py-5">
+                <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                <p class="mb-0">В этом курсе пока нет заданий</p>
+                {% if current_user.role == 'teacher' and course.teacher_id == current_user.id %}
+                    <a href="{{ url_for('create_task_with_course', course_id=course.id) }}" class="btn btn-primary mt-3">
+                        <i class="bi bi-plus-circle me-1"></i>Создать первое задание
+                    </a>
+                {% endif %}
+            </div>
+        {% endif %}
+        
+        <!-- Для преподавателя - список всех отправленных работ по курсу -->
+        {% if current_user.role == 'teacher' and course.teacher_id == current_user.id %}
+            <h3 class="fw-bold mt-5 mb-3">
+                <i class="bi bi-file-check text-primary me-2"></i>Все отправленные работы
+            </h3>
+            
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    {% set all_submissions = [] %}
+                    {% for task in tasks %}
+                        {% for sub in task.submissions %}
+                            {% set _ = all_submissions.append(sub) %}
+                        {% endfor %}
+                    {% endfor %}
+                    
+                    {% if all_submissions %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Студент</th>
+                                        <th>Задание</th>
+                                        <th>Дата отправки</th>
+                                        <th>Оценка</th>
+                                        <th>Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for sub in all_submissions %}
+                                    <tr>
+                                        <td>{{ sub.student.username }}</td>
+                                        <td>{{ sub.task.title }}</td>
+                                        <td>{{ sub.submitted_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                                        <td>
+                                            {% if sub.grade %}
+                                                <span class="badge bg-success">{{ sub.grade }}/{{ sub.task.max_score }}</span>
+                                            {% else %}
+                                                <span class="badge bg-warning">Не проверено</span>
+                                            {% endif %}
+                                         </td>
+                                        <td>
+                                            <a href="{{ url_for('task_detail', task_id=sub.task.id) }}" class="btn btn-sm btn-primary">
+                                                <i class="bi bi-eye"></i> Проверить
+                                            </a>
+                                         </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center py-3">Нет отправленных работ</p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
