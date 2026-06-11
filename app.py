@@ -628,5 +628,34 @@ def uploaded_file(filename):
         flash(f'Ошибка при скачивании: {str(e)}', 'danger')
         return redirect(request.referrer or url_for('dashboard'))
 
+with app.app_context():
+    db.create_all()
+    
+    # Создаем тестового преподавателя если нет
+    if not User.query.filter_by(username='teacher').first():
+        teacher = User(
+            username='teacher',
+            email='teacher@example.com',
+            password_hash=generate_password_hash('teacher123'),
+            role='teacher',
+            group='Преподавательская'
+        )
+        db.session.add(teacher)
+        db.session.commit()
+        print("Тестовый преподаватель создан: teacher / teacher123")
+    
+    # Создаем тестового студента если нет
+    if not User.query.filter_by(username='student').first():
+        student = User(
+            username='student',
+            email='student@example.com',
+            password_hash=generate_password_hash('student123'),
+            role='student',
+            group='ИС-21'
+        )
+        db.session.add(student)
+        db.session.commit()
+        print("Тестовый студент создан: student / student123")
+
 if __name__ == '__main__':
     app.run(debug=True)
