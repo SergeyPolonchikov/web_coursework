@@ -149,31 +149,72 @@ def dashboard():
 @app.route('/profile')
 @login_required
 def profile():
-    if current_user.role == 'student':
+    if current_user.role == 'teacher':
+        # Статистика для преподавателя
+        courses = Course.query.filter_by(teacher_id=current_user.id).all()
+        courses_count = len(courses)
+        
+        # Все задания преподавателя
+        tasks = Task.query.join(Course).filter(Course.teacher_id == current_user.id).all()
+        tasks_count = len(tasks)
+        
+        # Количество студентов, которые отправляли работы
+        students_count = db.session.query(Submission.student_id).join(
+            Task
+        ).join(
+            Course
+        ).filter(
+            Course.teacher_id == current_user.id
+        ).distinct().count()
+        
+        # Количество отправленных работ
+        submissions_count = Submission.query.join(
+            Task
+        ).join(
+            Course
+        ).filter(
+            Course.teacher_id == current_user.id
+        ).count()
+        
+        stats = {
+            'courses_count': courses_count,
+            'tasks_count': tasks_count,
+            'students_count': students_count,
+            'submissions_count': submissions_count
+        }
+        
+        # Последние 3 задания
+        recent_tasks = Task.query.join(Course).filter(
+            Course.teacher_id == current_user.id
+        ).order_by(Task.created_at.desc()).limit(3).all()
+        
+        # Все курсы преподавателя
+        courses_list = courses
+        
+    else:
+        # Статистика для студента (оставляем как было)
         submissions = Submission.query.filter_by(student_id=current_user.id).all()
         completed_tasks = len([s for s in submissions if s.grade is not None])
         avg_grade = sum([s.grade for s in submissions if s.grade]) / len(submissions) if submissions else 0
         submitted_task_ids = [s.task_id for s in submissions]
-        active_tasks = Task.query.filter(Task.id.notin_(submitted_task_ids), Task.is_published == True, Task.deadline > datetime.utcnow()).count()
-        recent_tasks = Task.query.filter_by(is_published=True).order_by(Task.created_at.desc()).limit(3).all()
-        courses = Course.query.all()
+        active_tasks = Task.query.filter(
+            Task.id.notin_(submitted_task_ids), 
+            Task.is_published == True, 
+            Task.deadline > datetime.utcnow()
+        ).count()
+        courses_count = Course.query.count()
+        
         stats = {
             'completed': completed_tasks,
-            'avg_grade': round(avg_grade),
+            'avg_grade': round(avg_grade, 1),
             'active': active_tasks,
-            'courses': len(courses)
+            'courses': courses_count
         }
-    else:
-        stats = {
-            'courses': Course.query.filter_by(teacher_id=current_user.id).count(),
-            'tasks': Task.query.join(Course).filter(Course.teacher_id == current_user.id).count(),
-            'students': User.query.filter_by(role='student').count(),
-            'submissions': Submission.query.count()
-        }
-        recent_tasks = Task.query.join(Course).filter(Course.teacher_id == current_user.id).order_by(Task.created_at.desc()).limit(3).all()
-        courses = Course.query.filter_by(teacher_id=current_user.id).all()
+        
+        recent_tasks = Task.query.filter_by(is_published=True).order_by(Task.created_at.desc()).limit(3).all()
+        courses_list = Course.query.all()
     
-    return render_template('profile.html', stats=stats, recent_tasks=recent_tasks, courses=courses)
+    return render_template('profile.html', stats=stats, recent_tasks=recent_tasks, courses=courses_list)
 
 # ============ РЕДАКТИРОВАНИЕ ПРОФИЛЯ ============
 @app.route('/edit_profile', methods=['GET', 'POST'])
@@ -411,8 +452,86 @@ def submit_task(task_id):
 @login_required
 def statistics():
     if current_user.role == 'teacher':
-        pass
-    
+        # Статистика для преподавателя
+        courses = Course.query.filter_by(teacher_id=current_user.id).all()
+        
+        courses_stats = []
+        
+        for course in courses:
+            # Получаем все задания курса
+            tasks = Task.query.filter_by(course_id=course.id).all()
+            tasks_count = len(tasks)
+            
+            # Получаем всех студентов, которые отправляли работы на этот курс
+            submissions_for_course = Submission.query.join(Task).filter(
+                Task.course_id == course.id
+            ).all()
+            
+            # Собираем уникальных студентов
+            students_data = {}
+            for sub in submissions_for_course:
+                if sub.student_id not in students_data:
+                    students_data[sub.student_id] = {
+                        'student': sub.student,
+                        'submissions': []
+                    }
+                students_data[sub.student_id]['submissions'].append(sub)
+            
+            # Формируем данные по каждому студенту
+            students_list = []
+            for student_id, data in students_data.items():
+                student = data['student']
+                student_submissions = data['submissions']
+                
+                submitted_count = len(student_submissions)
+                graded_count = len([s for s in student_submissions if s.grade is not None])
+                not_graded_count = submitted_count - graded_count
+                
+                # Средний балл студента
+                avg_grade = 0
+                if graded_count > 0:
+                    grades = [s.grade for s in student_submissions if s.grade is not None]
+                    avg_grade = sum(grades) / len(grades)
+                
+                # Задания, которые студент не сдал
+                submitted_task_ids = [s.task_id for s in student_submissions]
+                not_submitted = [t for t in tasks if t.id not in submitted_task_ids]
+                
+                # Прогресс
+                progress = (submitted_count / tasks_count * 100) if tasks_count > 0 else 0
+                
+                students_list.append({
+                    'student': student,
+                    'submitted_count': submitted_count,
+                    'graded_count': graded_count,
+                    'not_graded_count': not_graded_count,
+                    'avg_grade': round(avg_grade, 1),
+                    'not_submitted_tasks': not_submitted,
+                    'progress': round(progress, 1)
+                })
+            
+            # Общая статистика по курсу
+            total_submissions = len(submissions_for_course)
+            total_students = len(students_list)
+            
+            # Средний балл по курсу
+            all_grades = []
+            for student in students_list:
+                if student['avg_grade'] > 0:
+                    all_grades.append(student['avg_grade'])
+            course_avg_grade = sum(all_grades) / len(all_grades) if all_grades else 0
+            
+            courses_stats.append({
+                'course': course,
+                'tasks_count': tasks_count,
+                'total_submissions': total_submissions,
+                'total_students': total_students,
+                'avg_grade': round(course_avg_grade, 1),
+                'students': students_list
+            })
+        
+        return render_template('statistics_teacher.html', courses_stats=courses_stats)
+        
     else:
         # СТАТИСТИКА ДЛЯ СТУДЕНТА
         # Получаем все отправки студента
