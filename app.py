@@ -14,6 +14,10 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'zip', 'rar', 'txt', 'jpg', 'png'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -130,9 +134,17 @@ def logout():
 def dashboard():
     if current_user.role == 'teacher':
         tasks = Task.query.join(Course).filter(Course.teacher_id == current_user.id).all()
+        stats = None
     else:
         tasks = Task.query.filter_by(is_published=True).all()
-    return render_template('dashboard.html', tasks=tasks)
+        # Добавляем статистику для студента
+        submissions = Submission.query.filter_by(student_id=current_user.id).all()
+        stats = {
+            'completed_tasks': len([s for s in submissions if s.grade is not None]),
+            'avg_grade': round(sum([s.grade for s in submissions if s.grade]) / len([s for s in submissions if s.grade]) if [s for s in submissions if s.grade] else 0, 1),
+            'pending_tasks': len([s for s in submissions if s.grade is None])
+        }
+    return render_template('dashboard.html', tasks=tasks, stats=stats)
 
 @app.route('/profile')
 @login_required
@@ -272,12 +284,29 @@ def task_detail(task_id):
 @app.route('/submissions')
 @login_required
 def submissions():
-    return render_template('submissions.html')
 
-@app.route('/uploads/<filename>')
-@login_required
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    if current_user.role == 'teacher':
+        submissions = (
+            Submission.query
+            .join(Task)
+            .join(Course)
+            .filter(Course.teacher_id == current_user.id)
+            .order_by(Submission.submitted_at.desc())
+            .all()
+        )
+
+    else:
+        submissions = (
+            Submission.query
+            .filter_by(student_id=current_user.id)
+            .order_by(Submission.submitted_at.desc())
+            .all()
+        )
+
+    return render_template(
+        'submissions.html',
+        submissions=submissions
+    )
 
 @app.route('/edit_task/<int:task_id>', methods=['GET', 'POST'])
 @login_required
@@ -327,50 +356,54 @@ def submit_task(task_id):
         return redirect(url_for('task_detail', task_id=task_id))
     
     if file:
-        # Создаем папку uploads если её нет
-        if not os.path.exists(app.config['UPLOAD_FOLDER']):
-            os.makedirs(app.config['UPLOAD_FOLDER'])
+        # Создаем папку если её нет
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
+        # Создаем безопасное имя файла (ТОЛЬКО ИМЯ, БЕЗ ПУТИ)
+        original_filename = secure_filename(file.filename)
+        timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        filename = f"{current_user.id}_{task_id}_{timestamp}_{original_filename}"
+        
+        # Полный путь для сохранения
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         
         # Сохраняем файл
-        filename = secure_filename(f"{current_user.id}_{task_id}_{file.filename}")
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
+        
+        print(f"Файл сохранен по пути: {filepath}")
+        print(f"Имя файла в БД: {filename}")
         
         # Проверяем, есть ли уже отправка
         submission = Submission.query.filter_by(task_id=task_id, student_id=current_user.id).first()
         
         if submission:
-            # Обновляем существующую
-            submission.file_path = filepath
+            # Удаляем старый файл
+            if submission.file_path:
+                old_path = os.path.join(app.config['UPLOAD_FOLDER'], submission.file_path)
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                    print(f"Старый файл удален: {old_path}")
+            
+            submission.file_path = filename  # Сохраняем ТОЛЬКО имя файла!
             submission.submitted_at = datetime.utcnow()
             submission.grade = None
             submission.comment = None
-            flash('Работа обновлена!', 'success')
+            flash('Работа успешно обновлена!', 'success')
         else:
-            # Создаем новую
             submission = Submission(
                 task_id=task_id,
                 student_id=current_user.id,
-                file_path=filepath,
+                file_path=filename,  # Сохраняем ТОЛЬКО имя файла!
                 submitted_at=datetime.utcnow()
             )
             db.session.add(submission)
-            flash('Работа успешно отправлена!', 'success')
+            flash('Работа успешно отправлена на проверку!', 'success')
         
         db.session.commit()
         
-        # Отладка - проверяем сохранилось ли
-        print(f"=== SUBMISSION SAVED ===")
-        print(f"Task ID: {task_id}")
-        print(f"Student ID: {current_user.id}")
-        print(f"File path: {filepath}")
-        
-        # Проверяем в базе
-        check_sub = Submission.query.filter_by(task_id=task_id, student_id=current_user.id).first()
-        if check_sub:
-            print(f"Submission found in DB: ID={check_sub.id}, file_path={check_sub.file_path}")
-        else:
-            print("ERROR: Submission NOT found in database!")
+        # Проверяем, что сохранилось в БД
+        saved_sub = Submission.query.get(submission.id)
+        print(f"Проверка БД: ID={saved_sub.id}, file_path={saved_sub.file_path}")
     
     return redirect(url_for('task_detail', task_id=task_id))
 
@@ -378,153 +411,93 @@ def submit_task(task_id):
 @login_required
 def statistics():
     if current_user.role == 'teacher':
-        # Статистика для преподавателя - результаты студентов по курсам
-        courses = Course.query.filter_by(teacher_id=current_user.id).all()
-        
-        all_courses_stats = []
-        
-        for course in courses:
-            # Получаем все задания курса
-            tasks = Task.query.filter_by(course_id=course.id).all()
-            tasks_count = len(tasks)
-            
-            # Получаем всех студентов, которые отправляли работы на этот курс
-            students_with_submissions = db.session.query(User, Submission).join(
-                Submission, Submission.student_id == User.id
-            ).join(
-                Task, Task.id == Submission.task_id
-            ).filter(
-                Task.course_id == course.id
-            ).distinct(User.id).all()
-            
-            # Собираем уникальных студентов
-            students_data = []
-            student_ids = set()
-            
-            for student, _ in students_with_submissions:
-                if student.id not in student_ids:
-                    student_ids.add(student.id)
-                    
-                    # Получаем все работы студента по этому курсу
-                    student_submissions = Submission.query.join(Task).filter(
-                        Task.course_id == course.id,
-                        Submission.student_id == student.id
-                    ).all()
-                    
-                    # Подсчитываем статистику по студенту
-                    submitted_count = len(student_submissions)
-                    graded_count = len([s for s in student_submissions if s.grade is not None])
-                    not_graded_count = submitted_count - graded_count
-                    
-                    avg_grade = 0
-                    if graded_count > 0:
-                        grades = [s.grade for s in student_submissions if s.grade]
-                        avg_grade = sum(grades) / len(grades)
-                    
-                    # Задания, которые студент не сдал
-                    submitted_task_ids = [s.task_id for s in student_submissions]
-                    not_submitted = [t for t in tasks if t.id not in submitted_task_ids]
-                    
-                    # Прогресс студента по курсу
-                    if tasks_count > 0:
-                        progress = (submitted_count / tasks_count) * 100
-                    else:
-                        progress = 0
-                    
-                    students_data.append({
-                        'student': student,
-                        'submitted_count': submitted_count,
-                        'graded_count': graded_count,
-                        'not_graded_count': not_graded_count,
-                        'avg_grade': round(avg_grade, 1),
-                        'not_submitted_tasks': not_submitted,
-                        'progress': round(progress, 1)
-                    })
-            
-            # Общая статистика по курсу
-            total_submissions = Submission.query.join(Task).filter(Task.course_id == course.id).count()
-            total_students = len(students_data)
-            
-            # Средний балл по курсу
-            all_grades = []
-            for student in students_data:
-                if student['avg_grade'] > 0:
-                    all_grades.append(student['avg_grade'])
-            course_avg_grade = sum(all_grades) / len(all_grades) if all_grades else 0
-            
-            all_courses_stats.append({
-                'course': course,
-                'tasks_count': tasks_count,
-                'total_submissions': total_submissions,
-                'total_students': total_students,
-                'avg_grade': round(course_avg_grade, 1),
-                'students': students_data
-            })
-        
-        return render_template('statistics_teacher.html', courses_stats=all_courses_stats)
+        pass
     
     else:
-        # Статистика для студента (оставляем как было)
+        # СТАТИСТИКА ДЛЯ СТУДЕНТА
+        # Получаем все отправки студента
         submissions = Submission.query.filter_by(student_id=current_user.id).all()
-        courses = Course.query.all()
         
-        course_stats = []
-        for course in courses:
-            tasks_in_course = Task.query.filter_by(course_id=course.id, is_published=True).all()
-            submitted_tasks = Submission.query.join(Task).filter(
-                Task.course_id == course.id,
-                Submission.student_id == current_user.id
-            ).all()
-            
-            completed = len([s for s in submitted_tasks if s.grade is not None])
-            pending = len([s for s in submitted_tasks if s.grade is None])
-            total = len(tasks_in_course)
-            
-            avg_grade = 0
-            if completed > 0:
-                grades = [s.grade for s in submitted_tasks if s.grade]
-                if grades:
-                    avg_grade = sum(grades) / len(grades)
-            
-            progress = 0
-            if total > 0:
-                progress = (completed / total) * 100
-            
-            course_stats.append({
-                'course': course,
-                'total_tasks': total,
-                'submitted': len(submitted_tasks),
-                'completed': completed,
-                'pending': pending,
-                'avg_grade': round(avg_grade, 1),
-                'progress': round(progress, 1)
-            })
+        # Получаем все опубликованные задания
+        all_tasks = Task.query.filter_by(is_published=True).all()
+        total_tasks = len(all_tasks)
         
-        total_tasks = Task.query.filter_by(is_published=True).count()
-        completed_tasks = len([s for s in submissions if s.grade is not None])
-        pending_tasks = len([s for s in submissions if s.grade is None])
-        not_started = total_tasks - len(submissions)
+        # Подсчитываем статистику по отправкам
+        submitted_tasks = len(submissions)
+        completed_tasks = len([s for s in submissions if s.grade is not None])  # Проверенные (с оценкой)
+        pending_tasks = len([s for s in submissions if s.grade is None])  # На проверке (без оценки)
+        not_started = total_tasks - submitted_tasks  # Не начатые
         
+        # Средний балл только по проверенным работам
         avg_grade = 0
         if completed_tasks > 0:
-            grades = [s.grade for s in submissions if s.grade]
+            grades = [s.grade for s in submissions if s.grade is not None]
             if grades:
-                avg_grade = sum(grades) / completed_tasks
+                avg_grade = sum(grades) / len(grades)
         
+        # Предстоящие и просроченные задания
         now = datetime.utcnow()
-        upcoming_tasks = Task.query.filter(Task.is_published == True, Task.deadline > now).count()
-        overdue_tasks = Task.query.filter(Task.is_published == True, Task.deadline < now).count()
+        upcoming_tasks = Task.query.filter(
+            Task.is_published == True, 
+            Task.deadline > now,
+            ~Task.id.in_([s.task_id for s in submissions])  # Не отправленные
+        ).count()
         
-        completed_percentage = 0
-        if total_tasks > 0:
-            completed_percentage = (completed_tasks / total_tasks) * 100
+        overdue_tasks = Task.query.filter(
+            Task.is_published == True, 
+            Task.deadline < now,
+            ~Task.id.in_([s.task_id for s in submissions])  # Не отправленные
+        ).count()
         
-        pending_percentage = 0
-        if total_tasks > 0:
-            pending_percentage = (pending_tasks / total_tasks) * 100
+        # Проценты для прогресс-баров
+        completed_percentage = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        pending_percentage = (pending_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        not_started_percentage = (not_started / total_tasks * 100) if total_tasks > 0 else 0
+        
+        # Статистика по курсам
+        courses = Course.query.all()
+        course_stats = []
+        
+        for course in courses:
+            # Задания курса
+            tasks_in_course = Task.query.filter_by(course_id=course.id, is_published=True).all()
+            total_in_course = len(tasks_in_course)
+            
+            if total_in_course > 0:
+                # Отправки студента по этому курсу
+                task_ids = [t.id for t in tasks_in_course]
+                course_submissions = Submission.query.filter(
+                    Submission.student_id == current_user.id,
+                    Submission.task_id.in_(task_ids)
+                ).all()
+                
+                submitted = len(course_submissions)
+                completed = len([s for s in course_submissions if s.grade is not None])
+                pending = submitted - completed
+                
+                # Средний балл по курсу
+                course_avg = 0
+                if completed > 0:
+                    grades = [s.grade for s in course_submissions if s.grade is not None]
+                    if grades:
+                        course_avg = sum(grades) / len(grades)
+                
+                # Прогресс
+                progress = (completed / total_in_course * 100) if total_in_course > 0 else 0
+                
+                course_stats.append({
+                    'course': course,
+                    'total_tasks': total_in_course,
+                    'submitted': submitted,
+                    'completed': completed,
+                    'pending': pending,
+                    'avg_grade': round(course_avg, 1),
+                    'progress': round(progress, 1)
+                })
         
         stats = {
             'total_tasks': total_tasks,
+            'submitted_tasks': submitted_tasks,
             'completed_tasks': completed_tasks,
             'pending_tasks': pending_tasks,
             'not_started': not_started,
@@ -533,9 +506,44 @@ def statistics():
             'overdue_tasks': overdue_tasks,
             'completed_percentage': round(completed_percentage, 1),
             'pending_percentage': round(pending_percentage, 1),
+            'not_started_percentage': round(not_started_percentage, 1),
             'course_stats': course_stats
         }
+        
         return render_template('statistics.html', stats=stats)
+    
+@app.route('/grade_submission/<int:submission_id>', methods=['POST'])
+@login_required
+def grade_submission(submission_id):
+    if current_user.role != 'teacher':
+        flash('Доступ запрещён', 'danger')
+        return redirect(url_for('dashboard'))
+
+    submission = Submission.query.get_or_404(submission_id)
+    task = Task.query.get(submission.task_id)
+    
+    try:
+        grade = int(request.form.get('grade', 0))
+        comment = request.form.get('comment', '')
+        
+        # Валидация оценки
+        if grade < 0:
+            grade = 0
+        if task and grade > task.max_score:
+            grade = task.max_score
+        
+        submission.grade = grade
+        submission.comment = comment
+        db.session.commit()
+        
+        # Отправляем уведомление студенту через flash с типом 'success'
+        flash(f'Оценка {grade}/{task.max_score} выставлена для студента {submission.student.username}', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка при сохранении оценки: {str(e)}', 'danger')
+
+    return redirect(url_for('task_detail', task_id=submission.task_id))
     
 @app.route('/create_task_with_course/<int:course_id>', methods=['GET', 'POST'])
 @login_required
@@ -568,6 +576,57 @@ def create_task_with_course(course_id):
         return redirect(url_for('course_detail', course_id=course_id))
     
     return render_template('create_task_with_course.html', course=course)
+
+@app.route('/uploads/<filename>')
+@login_required
+def uploaded_file(filename):
+    """Скачивание загруженных файлов"""
+    import os
+    
+    upload_folder = app.config['UPLOAD_FOLDER']
+    
+    # Декодируем URL (на случай пробелов и кириллицы)
+    from urllib.parse import unquote
+    filename = unquote(filename)
+    
+    # Полный путь к файлу
+    file_path = os.path.join(upload_folder, filename)
+    file_path = os.path.normpath(file_path)
+    
+    # Отладка - выводим информацию в консоль
+    print(f"Ищем файл: {file_path}")
+    print(f"Папка uploads: {upload_folder}")
+    print(f"Существует ли папка: {os.path.exists(upload_folder)}")
+    
+    # Если файл не найден, пробуем найти похожий
+    if not os.path.exists(file_path):
+        # Ищем все файлы в папке
+        if os.path.exists(upload_folder):
+            all_files = os.listdir(upload_folder)
+            print(f"Все файлы в папке: {all_files}")
+            
+            # Ищем файл, который содержит ID студента и ID задания
+            for f in all_files:
+                if filename in f or f.endswith(filename.split('_')[-1]):
+                    file_path = os.path.join(upload_folder, f)
+                    print(f"Найден похожий файл: {file_path}")
+                    break
+            else:
+                flash(f'Файл "{filename}" не найден в папке uploads', 'danger')
+                return redirect(request.referrer or url_for('dashboard'))
+        else:
+            flash('Папка uploads не существует', 'danger')
+            return redirect(request.referrer or url_for('dashboard'))
+    
+    try:
+        return send_from_directory(
+            directory=upload_folder,
+            path=os.path.basename(file_path),
+            as_attachment=True
+        )
+    except Exception as e:
+        flash(f'Ошибка при скачивании: {str(e)}', 'danger')
+        return redirect(request.referrer or url_for('dashboard'))
 
 if __name__ == '__main__':
     app.run(debug=True)

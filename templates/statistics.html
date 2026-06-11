@@ -5,6 +5,14 @@
     <title>Статистика | StudyTask</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        .progress-bar-custom {
+            transition: width 0.3s ease;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
 </head>
 <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
@@ -28,47 +36,230 @@
     </nav>
     
     <div class="container py-4">
-        <h1 class="fw-bold mb-4"><i class="bi bi-graph-up text-primary me-2"></i>Статистика</h1>
+        <h1 class="fw-bold mb-4"><i class="bi bi-graph-up text-primary me-2"></i>Моя успеваемость</h1>
         
+        <!-- Общая статистика -->
         <div class="row g-4 mb-4">
             <div class="col-md-3">
-                <div class="card border-0 shadow-sm rounded-4 text-center p-3">
-                    <i class="bi bi-list-check fs-1 text-primary"></i>
-                    <h3 class="fw-bold mt-2 mb-0">0</h3>
-                    <small class="text-muted">Всего заданий</small>
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 bg-primary bg-gradient text-white">
+                    <i class="bi bi-list-check fs-1"></i>
+                    <h3 class="fw-bold mt-2 mb-0">{{ stats.total_tasks|default(0) }}</h3>
+                    <small>Всего заданий</small>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card border-0 shadow-sm rounded-4 text-center p-3">
-                    <i class="bi bi-check-circle fs-1 text-success"></i>
-                    <h3 class="fw-bold mt-2 mb-0">0</h3>
-                    <small class="text-muted">Выполнено</small>
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 bg-success bg-gradient text-white">
+                    <i class="bi bi-check-circle fs-1"></i>
+                    <h3 class="fw-bold mt-2 mb-0">{{ stats.completed_tasks|default(0) }}</h3>
+                    <small>Проверено</small>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card border-0 shadow-sm rounded-4 text-center p-3">
-                    <i class="bi bi-hourglass-split fs-1 text-warning"></i>
-                    <h3 class="fw-bold mt-2 mb-0">0</h3>
-                    <small class="text-muted">На проверке</small>
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 bg-warning bg-gradient text-white">
+                    <i class="bi bi-hourglass-split fs-1"></i>
+                    <h3 class="fw-bold mt-2 mb-0">{{ stats.pending_tasks|default(0) }}</h3>
+                    <small>На проверке</small>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card border-0 shadow-sm rounded-4 text-center p-3">
-                    <i class="bi bi-star fs-1 text-info"></i>
-                    <h3 class="fw-bold mt-2 mb-0">0</h3>
-                    <small class="text-muted">Средний балл</small>
+                <div class="card border-0 shadow-sm rounded-4 text-center p-3 bg-info bg-gradient text-white">
+                    <i class="bi bi-star fs-1"></i>
+                    <h3 class="fw-bold mt-2 mb-0">{{ stats.avg_grade|default(0) }}</h3>
+                    <small>Средний балл</small>
                 </div>
             </div>
         </div>
         
-        <div class="card border-0 shadow-sm rounded-4">
-            <div class="card-body p-5 text-center">
-                <i class="bi bi-bar-chart-steps fs-1 text-primary mb-3 d-block"></i>
-                <h4 class="fw-bold">Статистика в разработке</h4>
-                <p class="text-muted">Детальная статистика будет доступна в следующей версии</p>
-                <a href="{{ url_for('dashboard') }}" class="btn btn-primary mt-2">Вернуться на главную</a>
+        <!-- Дополнительная статистика -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-body text-center">
+                        <i class="bi bi-send fs-2 text-primary"></i>
+                        <h4 class="fw-bold mt-2 mb-0">{{ stats.submitted_tasks|default(0) }}</h4>
+                        <small class="text-muted">Отправлено работ</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-body text-center">
+                        <i class="bi bi-clock-history fs-2 text-warning"></i>
+                        <h4 class="fw-bold mt-2 mb-0">{{ stats.upcoming_tasks|default(0) }}</h4>
+                        <small class="text-muted">Предстоящих заданий</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-body text-center">
+                        <i class="bi bi-exclamation-triangle fs-2 text-danger"></i>
+                        <h4 class="fw-bold mt-2 mb-0">{{ stats.overdue_tasks|default(0) }}</h4>
+                        <small class="text-muted">Просроченных заданий</small>
+                    </div>
+                </div>
             </div>
         </div>
+        
+        <!-- Прогресс-бар -->
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+                <h4 class="fw-bold mb-3"><i class="bi bi-pie-chart text-primary me-2"></i>Общий прогресс</h4>
+                
+                <!-- Выполненные задания -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Выполненные задания</span>
+                        <span>
+                            {% set completed = stats.completed_tasks|default(0) %}
+                            {% set total = stats.total_tasks|default(0) %}
+                            {{ completed }} / {{ total }}
+                        </span>
+                    </div>
+                    <div class="progress" style="height: 30px; border-radius: 15px;">
+                        {% set percent = stats.completed_percentage|default(0) %}
+                        <div class="progress-bar bg-success progress-bar-custom" 
+                             role="progressbar" 
+                             style="width: {{ percent }}%;" 
+                             aria-valuenow="{{ percent }}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            {{ percent }}%
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Задания на проверке -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Задания на проверке</span>
+                        <span>
+                            {% set pending = stats.pending_tasks|default(0) %}
+                            {% set total = stats.total_tasks|default(0) %}
+                            {{ pending }} / {{ total }}
+                        </span>
+                    </div>
+                    <div class="progress" style="height: 30px; border-radius: 15px;">
+                        {% set percent = stats.pending_percentage|default(0) %}
+                        <div class="progress-bar bg-warning progress-bar-custom" 
+                             role="progressbar" 
+                             style="width: {{ percent }}%;" 
+                             aria-valuenow="{{ percent }}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            {{ percent }}%
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Не начатые задания -->
+                <div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Не начатые задания</span>
+                        <span>
+                            {% set not_started = stats.not_started|default(0) %}
+                            {% set total = stats.total_tasks|default(0) %}
+                            {{ not_started }} / {{ total }}
+                        </span>
+                    </div>
+                    <div class="progress" style="height: 30px; border-radius: 15px;">
+                        {% set percent = stats.not_started_percentage|default(0) %}
+                        <div class="progress-bar bg-secondary progress-bar-custom" 
+                             role="progressbar" 
+                             style="width: {{ percent }}%;" 
+                             aria-valuenow="{{ percent }}" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            {{ percent }}%
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Статистика по курсам -->
+        <h3 class="fw-bold mb-3"><i class="bi bi-journal-bookmark me-2 text-primary"></i>Детализация по курсам</h3>
+        
+        {% if stats.course_stats %}
+            {% for course_stat in stats.course_stats %}
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white border-0 pt-4 px-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h4 class="fw-bold text-primary mb-0">
+                            <i class="bi bi-journal-bookmark-fill me-2"></i>{{ course_stat.course.title }}
+                        </h4>
+                        <span class="badge bg-primary fs-6 px-3 py-2">
+                            Средний балл: {{ course_stat.avg_grade|default(0) }}
+                        </span>
+                    </div>
+                    <p class="text-muted mt-2">{{ course_stat.course.description or 'Нет описания' }}</p>
+                </div>
+                <div class="card-body p-4">
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <div class="bg-light rounded-3 p-3 text-center">
+                                <i class="bi bi-list-check fs-2 text-primary"></i>
+                                <h5 class="fw-bold mt-2 mb-0">{{ course_stat.total_tasks|default(0) }}</h5>
+                                <small class="text-muted">Всего заданий</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="bg-light rounded-3 p-3 text-center">
+                                <i class="bi bi-send fs-2 text-info"></i>
+                                <h5 class="fw-bold mt-2 mb-0">{{ course_stat.submitted|default(0) }}</h5>
+                                <small class="text-muted">Отправлено</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="bg-light rounded-3 p-3 text-center">
+                                <i class="bi bi-check-circle fs-2 text-success"></i>
+                                <h5 class="fw-bold mt-2 mb-0">{{ course_stat.completed|default(0) }}</h5>
+                                <small class="text-muted">Проверено</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="bg-light rounded-3 p-3 text-center">
+                                <i class="bi bi-hourglass fs-2 text-warning"></i>
+                                <h5 class="fw-bold mt-2 mb-0">{{ course_stat.pending|default(0) }}</h5>
+                                <small class="text-muted">На проверке</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span><strong>Прогресс по курсу</strong></span>
+                            <span>{{ course_stat.progress|default(0) }}%</span>
+                        </div>
+                        <div class="progress" style="height: 25px; border-radius: 12px;">
+                            {% set progress_value = course_stat.progress|default(0) %}
+                            {% if progress_value >= 80 %}
+                                {% set progress_class = "bg-success" %}
+                            {% elif progress_value >= 50 %}
+                                {% set progress_class = "bg-warning" %}
+                            {% else %}
+                                {% set progress_class = "bg-danger" %}
+                            {% endif %}
+                            <div class="progress-bar progress-bar-custom {{ progress_class }}" 
+                                 role="progressbar" 
+                                 style="width: {{ progress_value }}%;" 
+                                 aria-valuenow="{{ progress_value }}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                {{ progress_value }}%
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info text-center py-5">
+                <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                <p class="mb-0">У вас пока нет курсов</p>
+                <a href="{{ url_for('courses') }}" class="btn btn-primary mt-3">Перейти к курсам</a>
+            </div>
+        {% endif %}
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

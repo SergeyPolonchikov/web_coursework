@@ -61,36 +61,52 @@
                 </div>
                 
                 {% if current_user.role == 'student' %}
-<div class="card border-0 shadow-sm rounded-4">
-    <div class="card-body p-4">
-        <h4 class="fw-bold mb-3">
-            <i class="bi bi-upload text-primary me-2"></i>Отправить работу
-        </h4>
-        
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        
-        <form method="POST" action="{{ url_for('submit_task', task_id=task.id) }}" enctype="multipart/form-data">
-            <div class="mb-3">
-                <label class="form-label fw-bold">Файл работы</label>
-                <input type="file" name="file" class="form-control" required>
-                <small class="text-muted">Поддерживаются форматы: .pdf, .doc, .docx, .zip, .rar</small>
-            </div>
-            <button type="submit" class="btn btn-primary">
-                <i class="bi bi-send me-1"></i>Отправить работу
-            </button>
-        </form>
-    </div>
-</div>
-{% endif %}
+                <!-- Форма отправки работы для студента -->
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h4 class="fw-bold mb-3">
+                            <i class="bi bi-upload text-primary me-2"></i>Отправить работу
+                        </h4>
+                        
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }} alert-dismissible fade show">
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <!-- Информация о предыдущей отправке -->
+                        {% if submission %}
+                        <div class="alert alert-info mb-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>Информация о вашей отправке:</strong><br>
+                            <i class="bi bi-clock me-1"></i>Отправлено: {{ submission.submitted_at.strftime('%d.%m.%Y %H:%M') }}<br>
+                            {% if submission.file_path %}
+                                <i class="bi bi-file-earmark-text me-1"></i>
+                                <a href="{{ url_for('uploaded_file', filename=submission.file_path) }}" target="_blank" class="text-decoration-none">
+                                    <i class="bi bi-download me-1"></i>Скачать отправленный файл
+                                </a>
+                                <br>
+                                <small class="text-muted">Файл: {{ submission.file_path.split('_')[-1] }}</small>
+                            {% endif %}
+                            {% if submission.grade is not none %}
+                                <br><br>
+                                <span class="badge bg-success">⭐ Оценка: {{ submission.grade }}/{{ task.max_score }}</span>
+                                {% if submission.comment %}
+                                    <br>
+                                    <strong>📝 Комментарий преподавателя:</strong>
+                                    <p class="mb-0 mt-1">{{ submission.comment }}</p>
+                                {% endif %}
+                            {% else %}
+                                <br>
+                                <span class="badge bg-warning mt-2">⏳ На проверке</span>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                         
                         <form method="POST" action="{{ url_for('submit_task', task_id=task.id) }}" enctype="multipart/form-data">
                             <div class="mb-3">
@@ -99,7 +115,7 @@
                                 <small class="text-muted">Поддерживаются форматы: .pdf, .doc, .docx, .zip, .rar</small>
                             </div>
                             <button type="submit" class="btn btn-primary">
-                                <i class="bi bi-send me-1"></i>Отправить работу
+                                <i class="bi bi-send me-1"></i>{% if submission %}Обновить работу{% else %}Отправить работу{% endif %}
                             </button>
                         </form>
                     </div>
@@ -107,36 +123,72 @@
                 {% endif %}
                 
                 {% if current_user.role == 'teacher' %}
-                <!-- Для преподавателя - список работ -->
+                <!-- Список отправленных работ для преподавателя -->
                 <div class="card border-0 shadow-sm rounded-4">
                     <div class="card-body p-4">
                         <h4 class="fw-bold mb-3">
-                            <i class="bi bi-people text-primary me-2"></i>Отправленные работы
+                            <i class="bi bi-people text-primary me-2"></i>
+                            Отправленные работы ({{ task.submissions|length }})
                         </h4>
-                        {% set submissions_list = task.task_submission %}
-                        {% if submissions_list %}
-                            {% for sub in submissions_list %}
+
+                        {% if task.submissions %}
+                            {% for sub in task.submissions %}
                             <div class="border-bottom pb-3 mb-3">
-                                <div class="d-flex justify-content-between align-items-start">
-                                    <div>
+                                <div class="d-flex justify-content-between flex-wrap">
+                                    <div class="flex-grow-1 me-3">
                                         <strong>{{ sub.student.username }}</strong>
-                                        <small class="text-muted d-block">{{ sub.submitted_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                        <div class="text-muted small">
+                                            <i class="bi bi-clock me-1"></i>{{ sub.submitted_at.strftime('%d.%m.%Y %H:%M') }}
+                                        </div>
                                         {% if sub.file_path %}
-                                            <a href="{{ url_for('uploaded_file', filename=sub.file_path.split('/')[-1]) }}" class="btn btn-sm btn-outline-primary mt-2" target="_blank">
+                                        <div class="mt-2">
+                                            <i class="bi bi-file-earmark-text me-1"></i>
+                                            <a href="{{ url_for('uploaded_file', filename=sub.file_path) }}" 
+                                               class="btn btn-sm btn-outline-primary"
+                                               target="_blank">
                                                 <i class="bi bi-download me-1"></i>Скачать файл
                                             </a>
+                                            <br>
+                                            <small class="text-muted mt-1 d-block">Имя файла: {{ sub.file_path.split('_')[-1] }}</small>
+                                        </div>
+                                        {% else %}
+                                        <div class="text-muted small mt-2">
+                                            <i class="bi bi-exclamation-triangle me-1"></i>Файл не загружен
+                                        </div>
+                                        {% endif %}
+                                        {% if sub.comment %}
+                                        <div class="mt-2">
+                                            <strong>💬 Комментарий:</strong>
+                                            <p class="mb-0 text-muted small">{{ sub.comment }}</p>
+                                        </div>
                                         {% endif %}
                                     </div>
-                                    <form method="POST" action="{{ url_for('grade_submission', submission_id=sub.id) }}" class="text-end">
-                                        <input type="number" name="grade" class="form-control form-control-sm mb-1" placeholder="Оценка" value="{{ sub.grade or '' }}" style="width: 100px;">
-                                        <input type="text" name="comment" class="form-control form-control-sm mb-1" placeholder="Комментарий" value="{{ sub.comment or '' }}">
-                                        <button type="submit" class="btn btn-sm btn-success">Оценить</button>
-                                    </form>
+                                    <div style="min-width:220px" class="mt-2 mt-md-0">
+                                        <form method="POST" action="{{ url_for('grade_submission', submission_id=sub.id) }}">
+                                            <input type="number"
+                                                   name="grade"
+                                                   min="0"
+                                                   max="{{ task.max_score }}"
+                                                   class="form-control mb-2"
+                                                   value="{{ sub.grade or '' }}"
+                                                   placeholder="Оценка">
+                                            <textarea name="comment"
+                                                      class="form-control mb-2"
+                                                      rows="2"
+                                                      placeholder="Комментарий">{{ sub.comment or '' }}</textarea>
+                                            <button type="submit" class="btn btn-success btn-sm w-100">
+                                                <i class="bi bi-save me-1"></i>Сохранить оценку
+                                            </button>
+                                        </form>
+                                    </div>
                                 </div>
                             </div>
                             {% endfor %}
                         {% else %}
-                            <p class="text-muted text-center py-3">Нет отправленных работ</p>
+                            <div class="alert alert-info text-center py-4">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                Пока нет отправленных работ.
+                            </div>
                         {% endif %}
                     </div>
                 </div>
